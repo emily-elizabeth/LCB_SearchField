@@ -10,6 +10,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(searchfield SHARED)
 
+# Force the output filename to "libsearchfield" on all platforms.
+# On macOS/Linux CMake already adds the "lib" prefix, so PREFIX="" plus
+# OUTPUT_NAME "libsearchfield" gives libsearchfield.dylib / libsearchfield.so.
+# On Windows there is no automatic prefix, so this gives libsearchfield.dll.
+set_target_properties(searchfield PROPERTIES
+    OUTPUT_NAME "libsearchfield"
+    PREFIX      ""
+)
+
 target_include_directories(searchfield
     PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
@@ -55,4 +64,4 @@ install(TARGETS searchfield
     LIBRARY  DESTINATION "${WIDGET_CODE_DIR}"
     RUNTIME  DESTINATION "${WIDGET_CODE_DIR}"
 )
-install(FILES include/libsearchfield.h DESTINATION include)
+install(FILES include/libsearchfield.h DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/include")
