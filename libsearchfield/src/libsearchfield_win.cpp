@@ -17,7 +17,6 @@ along with LCB_SearchField. If not, see <http://www.gnu.org/licenses/>.
 */
 
 #define WIN32_LEAN_AND_MEAN
-#define UNICODE
 #include <windows.h>
 #include <commctrl.h>
 #include <string>
@@ -104,7 +103,7 @@ static std::string WideToUTF8(const std::wstring &ws)
     if (ws.empty()) return {};
     int n = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, nullptr, 0, nullptr, nullptr);
     std::string s(n - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, s.data(), n, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, &s[0], n, nullptr, nullptr);
     return s;
 }
 
@@ -113,7 +112,7 @@ static std::wstring UTF8ToWide(const char *s)
     if (!s || !*s) return {};
     int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
     std::wstring ws(n - 1, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s, -1, ws.data(), n);
+    MultiByteToWideChar(CP_UTF8, 0, s, -1, &ws[0], n);
     return ws;
 }
 
@@ -132,7 +131,7 @@ static void FireTextChanged(MCSearchField *f)
 {
     int len = GetWindowTextLengthW(f->edit);
     f->text.resize(len);
-    GetWindowTextW(f->edit, f->text.data(), len + 1);
+    GetWindowTextW(f->edit, &f->text[0], len + 1);
 
     UpdateClearButton(f);
 
@@ -328,7 +327,7 @@ const char *MCSearchFieldGetText(MCSearchFieldRef p_field)
 {
     int len = GetWindowTextLengthW(p_field->edit);
     p_field->text.resize(len);
-    GetWindowTextW(p_field->edit, p_field->text.data(), len + 1);
+    GetWindowTextW(p_field->edit, &p_field->text[0], len + 1);
     static std::string utf8;
     utf8 = WideToUTF8(p_field->text);
     return utf8.c_str();
