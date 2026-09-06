@@ -1,0 +1,85 @@
+Library: com.livecode.widget.native.searchfield
+
+Type: widget
+
+Summary:
+This widget displays a native search field on each supported platform:
+  • Mac   – NSSearchField (AppKit)
+  • Windows – a subclassed Edit control with magnifying-glass icon
+  • Linux   – GtkSearchEntry inside a GtkSearchBar (GTK 3)
+
+Messages sent to the widget's script object:
+
+version: 1.0.0
+
+author: LiveCode
+
+Name: searchTextChanged
+
+Type: widget
+
+Syntax: on searchTextChanged pText
+
+Summary: Sent when the search text changes (on each keystroke).
+
+Parameters: 
+
+pText(string): The current text in the search field.
+
+Name: searchSubmitted
+
+Type: widget
+
+Syntax: on searchSubmitted pText
+
+Summary: Sent when the user submits a search (Return key).
+
+Parameters: 
+
+pText(string): The text submitted.
+
+Name: searchCancelled
+
+Type: widget
+
+Syntax: on searchCancelled
+
+Summary: Sent when the user clears or cancels the search field.
+
+
+Name: showCancelButton
+
+Type: property
+
+Syntax: set the showCancelButton of <widget> to { true | false }
+get the showCancelButton of <widget>
+
+Summary: Whether the cancel / clear button is visible inside the field.
+
+
+
+
+Name: searchText
+
+Type: property
+
+Syntax: set the searchText of <widget> to <pText>
+get the searchText of <widget>
+
+Summary: The current text content of the search field.
+
+
+
+
+Name: placeholderText
+
+Type: property
+
+Syntax: set the placeholderText of <widget> to <pText>
+get the placeholderText of <widget>
+
+Summary: The placeholder text shown when the search field is empty.
+
+
+
+

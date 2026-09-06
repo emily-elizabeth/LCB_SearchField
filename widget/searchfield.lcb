@@ -1,0 +1,317 @@
+/*
+Copyright (C) 2024 LiveCode Ltd.
+
+This file is part of LCB_SearchField.
+
+LCB_SearchField is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License v3 as
+published by the Free Software Foundation.
+
+LCB_SearchField is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with LCB_SearchField. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/**
+This widget displays a native search field on each supported platform:
+  • Mac   – NSSearchField (AppKit)
+  • Windows – a subclassed Edit control with magnifying-glass icon
+  • Linux   – GtkSearchEntry inside a GtkSearchBar (GTK 3)
+
+Messages sent to the widget's script object:
+
+Name: searchTextChanged
+Syntax: on searchTextChanged pText
+Summary: Sent when the search text changes (on each keystroke).
+Parameters:
+  pText (string): The current text in the search field.
+
+Name: searchSubmitted
+Syntax: on searchSubmitted pText
+Summary: Sent when the user submits a search (Return key).
+Parameters:
+  pText (string): The text submitted.
+
+Name: searchCancelled
+Syntax: on searchCancelled
+Summary: Sent when the user clears or cancels the search field.
+*/
+
+widget com.livecode.widget.native.searchfield
+
+use com.livecode.foreign
+use com.livecode.widget
+use com.livecode.canvas
+use com.livecode.engine
+use com.livecode.library.widgetutils
+
+metadata version is "1.0.0"
+metadata author is "LiveCode"
+metadata title is "Search Field"
+metadata svgicon is "M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+
+-- -------------------------------------------------------------------------
+-- Properties
+-- -------------------------------------------------------------------------
+
+/**
+Syntax:
+set the searchText of <widget> to <pText>
+get the searchText of <widget>
+
+Summary: The current text content of the search field.
+*/
+property "searchText" get GetSearchText set SetSearchText
+metadata searchText.label is "Search text"
+metadata searchText.default is ""
+
+/**
+Syntax:
+set the placeholderText of <widget> to <pText>
+get the placeholderText of <widget>
+
+Summary: The placeholder text shown when the search field is empty.
+*/
+property "placeholderText" get mPlaceholderText set SetPlaceholderText
+metadata placeholderText.label is "Placeholder text"
+metadata placeholderText.default is "Search"
+
+/**
+Syntax:
+set the showCancelButton of <widget> to { true | false }
+get the showCancelButton of <widget>
+
+Summary: Whether the cancel / clear button is visible inside the field.
+*/
+property "showCancelButton" get mShowCancelButton set SetShowCancelButton
+metadata showCancelButton.label is "Show cancel button"
+metadata showCancelButton.default is "true"
+
+-- -------------------------------------------------------------------------
+-- Private state
+-- -------------------------------------------------------------------------
+
+private variable mSearchFieldRef    as optional Pointer
+private variable mScriptObject      as ScriptObject
+private variable mPlaceholderText   as String
+private variable mShowCancelButton  as Boolean
+private variable mText              as String
+
+-- -------------------------------------------------------------------------
+-- Foreign handlers – libsearchfield C API
+-- -------------------------------------------------------------------------
+
+private foreign handler MCSearchFieldCreate(in pParent as Pointer, out rField as Pointer) \
+    returns CBool binds to "libsearchfield>MCSearchFieldCreate"
+
+private foreign handler MCSearchFieldDestroy(in pField as Pointer) \
+    returns nothing binds to "libsearchfield>MCSearchFieldDestroy"
+
+private foreign handler MCSearchFieldGetNativeLayer(in pField as Pointer) \
+    returns Pointer binds to "libsearchfield>MCSearchFieldGetNativeLayer"
+
+private foreign handler MCSearchFieldSetText(in pField as Pointer, in pText as ZStringUTF8) \
+    returns nothing binds to "libsearchfield>MCSearchFieldSetText"
+
+private foreign handler MCSearchFieldGetText(in pField as Pointer) \
+    returns ZStringUTF8 binds to "libsearchfield>MCSearchFieldGetText"
+
+private foreign handler MCSearchFieldSetPlaceholderText(in pField as Pointer, in pText as ZStringUTF8) \
+    returns nothing binds to "libsearchfield>MCSearchFieldSetPlaceholderText"
+
+private foreign handler MCSearchFieldSetEnabled(in pField as Pointer, in pEnabled as CBool) \
+    returns nothing binds to "libsearchfield>MCSearchFieldSetEnabled"
+
+private foreign handler MCSearchFieldSetShowCancelButton(in pField as Pointer, in pShow as CBool) \
+    returns nothing binds to "libsearchfield>MCSearchFieldSetShowCancelButton"
+
+-- Callback setter types
+private type MCSearchFieldTextChangedCallback is Pointer
+private type MCSearchFieldSearchSubmittedCallback is Pointer
+private type MCSearchFieldSearchCancelledCallback is Pointer
+
+private foreign handler MCSearchFieldSetTextChangedCallback( \
+    in pField as Pointer, in pCb as MCSearchFieldTextChangedCallback, in pCtx as optional Pointer) \
+    returns nothing binds to "libsearchfield>MCSearchFieldSetTextChangedCallback"
+
+private foreign handler MCSearchFieldSetSearchSubmittedCallback( \
+    in pField as Pointer, in pCb as MCSearchFieldSearchSubmittedCallback, in pCtx as optional Pointer) \
+    returns nothing binds to "libsearchfield>MCSearchFieldSetSearchSubmittedCallback"
+
+private foreign handler MCSearchFieldSetSearchCancelledCallback( \
+    in pField as Pointer, in pCb as MCSearchFieldSearchCancelledCallback, in pCtx as optional Pointer) \
+    returns nothing binds to "libsearchfield>MCSearchFieldSetSearchCancelledCallback"
+
+-- -------------------------------------------------------------------------
+-- Callback handlers (called from C library)
+-- -------------------------------------------------------------------------
+
+private handler OnTextChanged(in pContext as optional Pointer, in pField as Pointer, in pText as ZStringUTF8) returns nothing
+    put pText into mText
+    post "searchTextChanged" to mScriptObject with [pText]
+end handler
+
+private handler OnSearchSubmitted(in pContext as optional Pointer, in pField as Pointer, in pText as ZStringUTF8) returns nothing
+    put pText into mText
+    post "searchSubmitted" to mScriptObject with [pText]
+end handler
+
+private handler OnSearchCancelled(in pContext as optional Pointer, in pField as Pointer) returns nothing
+    put "" into mText
+    post "searchCancelled" to mScriptObject
+end handler
+
+-- -------------------------------------------------------------------------
+-- Lifecycle
+-- -------------------------------------------------------------------------
+
+public handler OnCreate()
+    put ""       into mText
+    put "Search" into mPlaceholderText
+    put true     into mShowCancelButton
+end handler
+
+public handler OnDestroy()
+    put nothing into mSearchFieldRef
+end handler
+
+public handler OnOpen()
+    put my script object into mScriptObject
+
+    unsafe
+        variable tParent as Pointer
+        MCWidgetGetMyStackNativeView(tParent)
+
+        variable tField as Pointer
+        if not MCSearchFieldCreate(tParent, tField) then
+            throw "error creating native search field"
+        end if
+        put tField into mSearchFieldRef
+
+        set my native layer to MCSearchFieldGetNativeLayer(tField)
+
+        variable tTextChangedPtr as Pointer
+        variable tSubmittedPtr as Pointer
+        variable tCancelledPtr as Pointer
+        MCHandlerGetFunctionPtr(OnTextChanged, tTextChangedPtr)
+        MCHandlerGetFunctionPtr(OnSearchSubmitted, tSubmittedPtr)
+        MCHandlerGetFunctionPtr(OnSearchCancelled, tCancelledPtr)
+
+        MCSearchFieldSetTextChangedCallback(tField, tTextChangedPtr, nothing)
+        MCSearchFieldSetSearchSubmittedCallback(tField, tSubmittedPtr, nothing)
+        MCSearchFieldSetSearchCancelledCallback(tField, tCancelledPtr, nothing)
+
+        -- Apply initial property values
+        MCSearchFieldSetPlaceholderText(tField, mPlaceholderText)
+        MCSearchFieldSetText(tField, mText)
+        MCSearchFieldSetShowCancelButton(tField, mShowCancelButton)
+        MCSearchFieldSetEnabled(tField, my enabled)
+    end unsafe
+end handler
+
+public handler OnClose()
+    unsafe
+        if mSearchFieldRef is not nothing then
+            MCSearchFieldDestroy(mSearchFieldRef)
+        end if
+    end unsafe
+    set my native layer to nothing
+    put nothing into mSearchFieldRef
+end handler
+
+-- -------------------------------------------------------------------------
+-- Paint – only needed when no native layer is active (edit-time / other OS)
+-- -------------------------------------------------------------------------
+
+public handler OnPaint()
+    if mSearchFieldRef is not nothing then
+        return
+    end if
+    paintPlaceholderImage(this canvas, my bounds, \
+        "M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z", \
+        my name, my font, nothing)
+end handler
+
+-- -------------------------------------------------------------------------
+-- Parent property sync (enabled, font, etc.)
+-- -------------------------------------------------------------------------
+
+public handler OnParentPropertyChanged()
+    unsafe
+        if mSearchFieldRef is not nothing then
+            MCSearchFieldSetEnabled(mSearchFieldRef, my enabled)
+        end if
+    end unsafe
+end handler
+
+-- -------------------------------------------------------------------------
+-- Save / Load
+-- -------------------------------------------------------------------------
+
+public handler OnSave(out rProperties as Array)
+    put mText             into rProperties["searchText"]
+    put mPlaceholderText  into rProperties["placeholderText"]
+    put mShowCancelButton into rProperties["showCancelButton"]
+end handler
+
+public handler OnLoad(in pProperties as Array)
+    put pProperties["searchText"]      into mText
+    put pProperties["placeholderText"] into mPlaceholderText
+    put pProperties["showCancelButton"] into mShowCancelButton
+end handler
+
+-- -------------------------------------------------------------------------
+-- Property getters / setters
+-- -------------------------------------------------------------------------
+
+private handler GetSearchText() returns String
+    unsafe
+        if mSearchFieldRef is not nothing then
+            put MCSearchFieldGetText(mSearchFieldRef) into mText
+        end if
+    end unsafe
+    return mText
+end handler
+
+private handler SetSearchText(in pText as String) returns nothing
+    put pText into mText
+    unsafe
+        if mSearchFieldRef is not nothing then
+            MCSearchFieldSetText(mSearchFieldRef, pText)
+        end if
+    end unsafe
+end handler
+
+private handler SetPlaceholderText(in pText as String) returns nothing
+    put pText into mPlaceholderText
+    unsafe
+        if mSearchFieldRef is not nothing then
+            MCSearchFieldSetPlaceholderText(mSearchFieldRef, pText)
+        end if
+    end unsafe
+end handler
+
+private handler SetShowCancelButton(in pShow as Boolean) returns nothing
+    put pShow into mShowCancelButton
+    unsafe
+        if mSearchFieldRef is not nothing then
+            MCSearchFieldSetShowCancelButton(mSearchFieldRef, pShow)
+        end if
+    end unsafe
+end handler
+
+-- -------------------------------------------------------------------------
+-- Built-in helpers (mirrors MCHandlerGetFunctionPtr usage in browser widget)
+-- -------------------------------------------------------------------------
+
+private foreign handler MCWidgetGetMyStackNativeView(out rView as Pointer) \
+    returns nothing binds to "<builtin>"
+
+private foreign handler MCHandlerGetFunctionPtr(in pHandler as any, out rPtr as Pointer) \
+    returns CBool binds to "<builtin>"
+
+end widget

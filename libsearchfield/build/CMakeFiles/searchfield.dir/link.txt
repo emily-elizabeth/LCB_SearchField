@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -arch arm64 -dynamiclib -Wl,-headerpad_max_install_names -o libsearchfield.dylib -install_name @rpath/libsearchfield.dylib CMakeFiles/searchfield.dir/src/libsearchfield_osx.mm.o  -framework Cocoa -framework AppKit

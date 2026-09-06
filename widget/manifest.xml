@@ -1,0 +1,38 @@
+<package version="0.0">
+  <name>com.livecode.widget.native.searchfield</name>
+  <title>Search Field</title>
+  <author>LiveCode</author>
+  <version>1.0.0</version>
+  <license>community</license>
+  <type>widget</type>
+  <requires name="com.livecode.foreign"/>
+  <requires name="com.livecode.engine"/>
+  <requires name="com.livecode.library.widgetutils"/>
+  <requires name="com.livecode.widget"/>
+  <requires name="com.livecode.logic"/>
+  <requires name="com.livecode.arithmetic"/>
+  <requires name="com.livecode.binary"/>
+  <requires name="com.livecode.list"/>
+  <requires name="com.livecode.string"/>
+  <requires name="com.livecode.type"/>
+  <requires name="com.livecode.canvas"/>
+  <requires name="com.livecode.array"/>
+  <metadata key="svgicon">M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z</metadata>
+  <property name="searchText" get="string" set="string"/>
+  <metadata key="searchText.label">Search text</metadata>
+  <metadata key="searchText.default"></metadata>
+  <property name="placeholderText" get="string" set="string"/>
+  <metadata key="placeholderText.label">Placeholder text</metadata>
+  <metadata key="placeholderText.default">Search</metadata>
+  <property name="showCancelButton" get="boolean" set="boolean"/>
+  <metadata key="showCancelButton.label">Show cancel button</metadata>
+  <metadata key="showCancelButton.default">true</metadata>
+  <handler name="OnCreate" parameters="" return="any"/>
+  <handler name="OnDestroy" parameters="" return="any"/>
+  <handler name="OnOpen" parameters="" return="any"/>
+  <handler name="OnClose" parameters="" return="any"/>
+  <handler name="OnPaint" parameters="" return="any"/>
+  <handler name="OnParentPropertyChanged" parameters="" return="any"/>
+  <handler name="OnSave" parameters="out array" return="any"/>
+  <handler name="OnLoad" parameters="in array" return="any"/>
+</package>
