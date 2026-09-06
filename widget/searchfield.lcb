@@ -117,9 +117,6 @@ private foreign handler MCSearchFieldGetNativeLayer(in pField as Pointer) \
 private foreign handler MCSearchFieldSetText(in pField as Pointer, in pText as ZStringUTF8) \
     returns nothing binds to "libsearchfield>MCSearchFieldSetText"
 
-private foreign handler MCSearchFieldGetText(in pField as Pointer) \
-    returns ZStringUTF8 binds to "libsearchfield>MCSearchFieldGetText"
-
 private foreign handler MCSearchFieldSetPlaceholderText(in pField as Pointer, in pText as ZStringUTF8) \
     returns nothing binds to "libsearchfield>MCSearchFieldSetPlaceholderText"
 
@@ -269,11 +266,10 @@ end handler
 -- -------------------------------------------------------------------------
 
 private handler GetSearchText() returns String
-    unsafe
-        if mSearchFieldRef is not nothing then
-            put MCSearchFieldGetText(mSearchFieldRef) into mText
-        end if
-    end unsafe
+    -- mText is kept in sync by OnTextChanged (callback) and SetSearchText (setter),
+    -- so no C round-trip is needed here. Calling MCSearchFieldGetText and storing
+    -- its ZStringUTF8 return value caused the LCB runtime to free() a pointer into
+    -- the C++ struct's internal std::string buffer, corrupting the heap.
     return mText
 end handler
 
