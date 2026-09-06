@@ -22,6 +22,13 @@ along with LCB_SearchField. If not, see <http://www.gnu.org/licenses/>.
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Symbol visibility: dllexport on Windows, default visibility elsewhere. */
+#ifdef _WIN32
+#  define LCSF_API __declspec(dllexport)
+#else
+#  define LCSF_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -58,10 +65,10 @@ typedef void (*MCSearchFieldSearchCancelledCallback)(void *p_context,
  *   Linux   – GtkWidget * (a GtkBox or GtkWindow)
  *
  * Returns true on success; r_field is set to the new instance. */
-bool MCSearchFieldCreate(void *p_parent_view, MCSearchFieldRef *r_field);
+LCSF_API bool MCSearchFieldCreate(void *p_parent_view, MCSearchFieldRef *r_field);
 
 /* Destroy a search field and release all associated resources. */
-void MCSearchFieldDestroy(MCSearchFieldRef p_field);
+LCSF_API void MCSearchFieldDestroy(MCSearchFieldRef p_field);
 
 /* -------------------------------------------------------------------------
  * Native layer access
@@ -72,7 +79,7 @@ void MCSearchFieldDestroy(MCSearchFieldRef p_field);
  *   Mac     – NSView *
  *   Windows – HWND
  *   Linux   – GtkWidget *                                               */
-void *MCSearchFieldGetNativeLayer(MCSearchFieldRef p_field);
+LCSF_API void *MCSearchFieldGetNativeLayer(MCSearchFieldRef p_field);
 
 /* -------------------------------------------------------------------------
  * Geometry
@@ -80,9 +87,9 @@ void *MCSearchFieldGetNativeLayer(MCSearchFieldRef p_field);
 
 /* Set the position and size of the search field in its parent's coordinate
  * space (top-left origin, pixels). */
-void MCSearchFieldSetFrame(MCSearchFieldRef p_field,
-                           int32_t p_x, int32_t p_y,
-                           int32_t p_width, int32_t p_height);
+LCSF_API void MCSearchFieldSetFrame(MCSearchFieldRef p_field,
+                                    int32_t p_x, int32_t p_y,
+                                    int32_t p_width, int32_t p_height);
 
 /* -------------------------------------------------------------------------
  * Properties
@@ -91,39 +98,39 @@ void MCSearchFieldSetFrame(MCSearchFieldRef p_field,
 /* Get/set the current text content of the field.
  * The returned string from Get is valid until the next call into
  * libsearchfield on this field; callers that need to keep it must copy it. */
-const char *MCSearchFieldGetText(MCSearchFieldRef p_field);
-void        MCSearchFieldSetText(MCSearchFieldRef p_field, const char *p_text);
+LCSF_API const char *MCSearchFieldGetText(MCSearchFieldRef p_field);
+LCSF_API void        MCSearchFieldSetText(MCSearchFieldRef p_field, const char *p_text);
 
 /* Placeholder text shown when the field is empty. */
-const char *MCSearchFieldGetPlaceholderText(MCSearchFieldRef p_field);
-void        MCSearchFieldSetPlaceholderText(MCSearchFieldRef p_field,
-                                            const char *p_placeholder);
+LCSF_API const char *MCSearchFieldGetPlaceholderText(MCSearchFieldRef p_field);
+LCSF_API void        MCSearchFieldSetPlaceholderText(MCSearchFieldRef p_field,
+                                                     const char *p_placeholder);
 
 /* Whether the field and its controls are interactive. */
-bool MCSearchFieldGetEnabled(MCSearchFieldRef p_field);
-void MCSearchFieldSetEnabled(MCSearchFieldRef p_field, bool p_enabled);
+LCSF_API bool MCSearchFieldGetEnabled(MCSearchFieldRef p_field);
+LCSF_API void MCSearchFieldSetEnabled(MCSearchFieldRef p_field, bool p_enabled);
 
 /* Whether the platform cancel/clear button is visible.
  * On platforms where this is always shown or always hidden, the setter
  * is a no-op and the getter reflects actual behaviour. */
-bool MCSearchFieldGetShowCancelButton(MCSearchFieldRef p_field);
-void MCSearchFieldSetShowCancelButton(MCSearchFieldRef p_field, bool p_show);
+LCSF_API bool MCSearchFieldGetShowCancelButton(MCSearchFieldRef p_field);
+LCSF_API void MCSearchFieldSetShowCancelButton(MCSearchFieldRef p_field, bool p_show);
 
 /* -------------------------------------------------------------------------
  * Callbacks
  * ---------------------------------------------------------------------- */
 
-void MCSearchFieldSetTextChangedCallback(
+LCSF_API void MCSearchFieldSetTextChangedCallback(
         MCSearchFieldRef p_field,
         MCSearchFieldTextChangedCallback p_callback,
         void *p_context);
 
-void MCSearchFieldSetSearchSubmittedCallback(
+LCSF_API void MCSearchFieldSetSearchSubmittedCallback(
         MCSearchFieldRef p_field,
         MCSearchFieldSearchSubmittedCallback p_callback,
         void *p_context);
 
-void MCSearchFieldSetSearchCancelledCallback(
+LCSF_API void MCSearchFieldSetSearchCancelledCallback(
         MCSearchFieldRef p_field,
         MCSearchFieldSearchCancelledCallback p_callback,
         void *p_context);
