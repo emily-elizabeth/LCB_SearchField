@@ -105,12 +105,10 @@ bool MCSearchFieldCreate(void *p_parent_view, MCSearchFieldRef *r_field)
     g_signal_connect(search_entry, "stop-search",
                      G_CALLBACK(on_stop_search), f);
 
-    if (p_parent_view)
-    {
-        GtkWidget *parent = reinterpret_cast<GtkWidget *>(p_parent_view);
-        gtk_container_add(GTK_CONTAINER(parent), search_bar);
-    }
-
+    /* Do NOT add to p_parent_view here. The engine embeds the widget when the
+     * LCB widget calls "set my native layer to MCSearchFieldGetNativeLayer(...)".
+     * Calling gtk_container_add on the parent pointer at this stage crashes
+     * because it is not yet a valid GtkContainer in the widget lifecycle. */
     gtk_widget_show_all(search_bar);
 
     f->search_entry = search_entry;
