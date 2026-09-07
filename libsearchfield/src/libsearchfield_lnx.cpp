@@ -122,7 +122,12 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
     g_signal_connect(entry, "stop-search",    G_CALLBACK(on_stop_search),    f);
     g_signal_connect(entry, "icon-press",     G_CALLBACK(on_icon_press),     f);
 
-    gtk_widget_show_all(plug);
+    /* Realize to obtain an XID but do NOT map/show the plug as a standalone
+     * window. XEMBED (via GtkSocket) controls its mapping once embedded.
+     * Calling gtk_widget_show_all here maps the plug independently, which
+     * conflicts with the socket's embedding and prevents it from appearing. */
+    gtk_widget_realize(plug);
+    gtk_widget_show(entry); /* mark the entry visible so it renders once embedded */
 
     f->plug         = plug;
     f->search_entry = entry;
