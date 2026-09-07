@@ -18,6 +18,8 @@ along with LCB_SearchField. If not, see <http://www.gnu.org/licenses/>.
 
 #include <gtk/gtk.h>
 #include <gtk/gtkx.h>   /* GtkPlug / GtkSocket (XEMBED support) */
+#include <gdk/gdkx.h>   /* gdk_x11_display_get_xdisplay, gdk_x11_window_get_xid */
+#include <X11/Xlib.h>   /* XSetInputFocus */
 #include <string>
 #include <cstring>
 #include "libsearchfield.h"
@@ -92,15 +94,22 @@ static void on_icon_press(GtkEntry *entry, GtkEntryIconPosition pos,
         f->cancelled_cb(f->cancelled_ctx, f);
 }
 
-/* In XEMBED the plug's X window must explicitly claim X11 keyboard focus via
- * the XEMBED focus protocol each time the user clicks into it.  GTK's normal
- * click-to-focus path calls gtk_widget_grab_focus, which for a GtkPlug sends
- * XEMBED_REQUEST_FOCUS to the socket; the socket responds with XEMBED_FOCUS_IN
- * which finally calls gdk_window_focus → XSetInputFocus on the plug window.
- * We make this explicit here to ensure the chain fires on every button press. */
-static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton * /*event*/,
-                                      gpointer /*user_data*/)
+/* GDK's gdk_window_focus() uses _NET_ACTIVE_WINDOW on modern desktops, which
+ * goes through the window manager. The WM doesn't know about XEMBED-embedded
+ * plug windows so it ignores the request and the plug never gets X11 keyboard
+ * focus. We bypass GDK and call XSetInputFocus directly on the plug's X window
+ * whenever the user clicks in the entry. */
+static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton *event,
+                                      gpointer user_data)
 {
+    MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
+
+    /* Set X11 keyboard focus directly to the plug window */
+    GdkDisplay *display = gtk_widget_get_display(f->plug);
+    Display    *xdpy    = gdk_x11_display_get_xdisplay(display);
+    Window      xwin    = gdk_x11_window_get_xid(gtk_widget_get_window(f->plug));
+    XSetInputFocus(xdpy, xwin, RevertToParent, event->time);
+
     gtk_widget_grab_focus(widget);
     return FALSE; /* let normal handling continue */
 }
@@ -141,7 +150,7 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
     g_signal_connect(entry, "activate",          G_CALLBACK(on_activate),           f);
     g_signal_connect(entry, "stop-search",       G_CALLBACK(on_stop_search),        f);
     g_signal_connect(entry, "icon-press",        G_CALLBACK(on_icon_press),         f);
-    g_signal_connect(entry, "button-press-event",G_CALLBACK(on_entry_button_press), NULL);
+    g_signal_connect(entry, "button-press-event",G_CALLBACK(on_entry_button_press), f);
     g_signal_connect(entry, "focus-in-event",    G_CALLBACK(on_entry_focus_in),     NULL);
 
     /* Show the plug (and all its children) before the engine's GtkSocket embeds
