@@ -95,30 +95,41 @@ static void on_icon_press(GtkEntry *entry, GtkEntryIconPosition pos,
 }
 
 /* GDK's gdk_window_focus() uses _NET_ACTIVE_WINDOW on modern desktops, which
- * goes through the window manager. The WM doesn't know about XEMBED-embedded
- * plug windows so it ignores the request and the plug never gets X11 keyboard
- * focus. We bypass GDK and call XSetInputFocus directly on the plug's X window
- * whenever the user clicks in the entry. */
+ * goes through the window manager and is ignored for XEMBED-embedded plug
+ * windows.  We call XSetInputFocus directly so the plug gets X11 keyboard
+ * focus.
+ *
+ * Additionally, gtk_entry_check_cursor_blink() (which sets cursor_visible=TRUE
+ * and starts the blink timer) is only called from gtk_entry_focus_in(), which
+ * is triggered by a GDK_FOCUS_CHANGE event on the ENTRY's GdkWindow.  Because
+ * the entry's widget window IS the plug window (GtkEntry uses its parent's
+ * window), FocusIn arrives at the GtkPlug, not at the entry — so the entry
+ * never gets a GDK_FOCUS_CHANGE and the cursor stays invisible.  We synthesise
+ * a focus-change event on the entry after XSetInputFocus to fix this. */
 static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton *event,
                                       gpointer user_data)
 {
     MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
 
-    /* Set X11 keyboard focus directly to the plug window */
+    /* 1. Set X11 keyboard focus directly to the plug window */
     GdkDisplay *display = gtk_widget_get_display(f->plug);
     Display    *xdpy    = gdk_x11_display_get_xdisplay(display);
     Window      xwin    = gdk_x11_window_get_xid(gtk_widget_get_window(f->plug));
     XSetInputFocus(xdpy, xwin, RevertToParent, event->time);
 
+    /* 2. Give GTK-internal focus to the entry */
     gtk_widget_grab_focus(widget);
-    return FALSE; /* let normal handling continue */
-}
 
-static gboolean on_entry_focus_in(GtkWidget * /*widget*/, GdkEventFocus * /*event*/,
-                                  gpointer /*user_data*/)
-{
-    fprintf(stderr, "[LCSF] entry focus-in\n");
-    return FALSE;
+    /* 3. Synthesise GDK_FOCUS_CHANGE on the entry so gtk_entry_focus_in()
+     *    runs, starts the cursor blink timer, and makes the cursor visible. */
+    GdkEvent *ev = gdk_event_new(GDK_FOCUS_CHANGE);
+    ev->focus_change.in     = TRUE;
+    ev->focus_change.window = gtk_widget_get_window(widget);
+    g_object_ref(ev->focus_change.window);
+    gtk_widget_send_focus_change(widget, ev);
+    gdk_event_free(ev);
+
+    return FALSE; /* let GtkEntry's default handler position the cursor */
 }
 
 /* -------------------------------------------------------------------------
@@ -151,7 +162,6 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
     g_signal_connect(entry, "stop-search",       G_CALLBACK(on_stop_search),        f);
     g_signal_connect(entry, "icon-press",        G_CALLBACK(on_icon_press),         f);
     g_signal_connect(entry, "button-press-event",G_CALLBACK(on_entry_button_press), f);
-    g_signal_connect(entry, "focus-in-event",    G_CALLBACK(on_entry_focus_in),     NULL);
 
     /* Show the plug (and all its children) before the engine's GtkSocket embeds
      * it. gtk_widget_show sets XEMBED_MAPPED in the plug's _XEMBED_INFO X
