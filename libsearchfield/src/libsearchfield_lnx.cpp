@@ -127,10 +127,23 @@ static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton *event,
 {
     MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
 
-    /* 1. Set X11 keyboard focus directly to the plug window */
+    /* 1. Set X11 keyboard focus to the plug window.
+     *
+     * The plug lives inside the engine's X window hierarchy (the GtkSocket
+     * container is reparented under the engine's stack window).  A direct
+     * XSetInputFocus(plug) therefore sends FocusOut with detail=NotifyInferior
+     * to the engine's window.  GDK ignores NotifyInferior FocusOut events
+     * (it means "focus is still within my subtree"), so the engine's controls
+     * never see the focus leave and keep their focused styling.
+     *
+     * Fix: set focus to None first.  That generates FocusOut(NotifyNonlinear)
+     * on the engine's window — which GDK *does* honour — then immediately set
+     * focus to the plug.  The "no focus" window between the two requests is
+     * processed atomically by the X server before any key event can slip in. */
     GdkDisplay *display = gtk_widget_get_display(f->plug);
     Display    *xdpy    = gdk_x11_display_get_xdisplay(display);
     Window      xwin    = gdk_x11_window_get_xid(gtk_widget_get_window(f->plug));
+    XSetInputFocus(xdpy, None, RevertToNone, event->time);
     XSetInputFocus(xdpy, xwin, RevertToParent, event->time);
 
     /* 2. Give GTK-internal focus to the entry */
@@ -188,6 +201,13 @@ static gboolean on_entry_key_press(GtkWidget * /*widget*/, GdkEventKey *event,
         GdkDisplay *display = gtk_widget_get_display(f->plug);
         Display    *xdpy    = gdk_x11_display_get_xdisplay(display);
         Window      xwin    = gdk_x11_window_get_xid(socket_win);
+        /* Same NotifyInferior issue in reverse: the socket is inside the engine's
+         * window hierarchy, so XSetInputFocus(socket) sends FocusIn(NotifyInferior)
+         * to the engine's window, which GDK ignores.  Route through None first so
+         * the engine sees FocusOut(NotifyNonlinear) from the plug and clears our
+         * focus styling, then give focus to the socket so the engine's tab order
+         * takes over. */
+        XSetInputFocus(xdpy, None, RevertToNone, event->time);
         XSetInputFocus(xdpy, xwin, RevertToParent, event->time);
     }
     return FALSE; /* let normal Tab handling proceed (sends XEMBED_FOCUS_NEXT) */
