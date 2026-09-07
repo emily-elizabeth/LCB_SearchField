@@ -92,6 +92,26 @@ static void on_icon_press(GtkEntry *entry, GtkEntryIconPosition pos,
         f->cancelled_cb(f->cancelled_ctx, f);
 }
 
+/* In XEMBED the plug's X window must explicitly claim X11 keyboard focus via
+ * the XEMBED focus protocol each time the user clicks into it.  GTK's normal
+ * click-to-focus path calls gtk_widget_grab_focus, which for a GtkPlug sends
+ * XEMBED_REQUEST_FOCUS to the socket; the socket responds with XEMBED_FOCUS_IN
+ * which finally calls gdk_window_focus → XSetInputFocus on the plug window.
+ * We make this explicit here to ensure the chain fires on every button press. */
+static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton * /*event*/,
+                                      gpointer /*user_data*/)
+{
+    gtk_widget_grab_focus(widget);
+    return FALSE; /* let normal handling continue */
+}
+
+static gboolean on_entry_focus_in(GtkWidget * /*widget*/, GdkEventFocus * /*event*/,
+                                  gpointer /*user_data*/)
+{
+    fprintf(stderr, "[LCSF] entry focus-in\n");
+    return FALSE;
+}
+
 /* -------------------------------------------------------------------------
  * Public API
  * ---------------------------------------------------------------------- */
@@ -117,10 +137,12 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
 
     gtk_container_add(GTK_CONTAINER(plug), entry);
 
-    g_signal_connect(entry, "search-changed", G_CALLBACK(on_search_changed), f);
-    g_signal_connect(entry, "activate",       G_CALLBACK(on_activate),       f);
-    g_signal_connect(entry, "stop-search",    G_CALLBACK(on_stop_search),    f);
-    g_signal_connect(entry, "icon-press",     G_CALLBACK(on_icon_press),     f);
+    g_signal_connect(entry, "search-changed",    G_CALLBACK(on_search_changed),     f);
+    g_signal_connect(entry, "activate",          G_CALLBACK(on_activate),           f);
+    g_signal_connect(entry, "stop-search",       G_CALLBACK(on_stop_search),        f);
+    g_signal_connect(entry, "icon-press",        G_CALLBACK(on_icon_press),         f);
+    g_signal_connect(entry, "button-press-event",G_CALLBACK(on_entry_button_press), NULL);
+    g_signal_connect(entry, "focus-in-event",    G_CALLBACK(on_entry_focus_in),     NULL);
 
     /* Show the plug (and all its children) before the engine's GtkSocket embeds
      * it. gtk_widget_show sets XEMBED_MAPPED in the plug's _XEMBED_INFO X
