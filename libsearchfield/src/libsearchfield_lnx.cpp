@@ -17,6 +17,7 @@ along with LCB_SearchField. If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <gtk/gtk.h>
+#include <gtk/gtkx.h>   /* GtkPlug / GtkSocket (XEMBED support) */
 #include <string>
 #include <cstring>
 #include "libsearchfield.h"
