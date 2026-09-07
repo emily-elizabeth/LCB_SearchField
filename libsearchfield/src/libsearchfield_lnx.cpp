@@ -94,6 +94,22 @@ static void on_icon_press(GtkEntry *entry, GtkEntryIconPosition pos,
         f->cancelled_cb(f->cancelled_ctx, f);
 }
 
+/* Send a synthetic GDK_FOCUS_CHANGE event to the entry.  This triggers the
+ * GTK entry's focus_in / focus_out handler, which starts/stops the cursor
+ * blink timer and updates the focus-ring state.  We need it because the entry
+ * shares the plug's GdkWindow (GtkEntry calls gtk_widget_set_window with its
+ * parent's window), so GDK only dispatches GDK_FOCUS_CHANGE to the GtkPlug,
+ * never to the entry directly. */
+static void send_entry_focus_change(MCSearchField *f, gboolean focus_in)
+{
+    GdkEvent *ev = gdk_event_new(GDK_FOCUS_CHANGE);
+    ev->focus_change.in     = focus_in;
+    ev->focus_change.window = gtk_widget_get_window(f->search_entry);
+    g_object_ref(ev->focus_change.window);
+    gtk_widget_send_focus_change(f->search_entry, ev);
+    gdk_event_free(ev);
+}
+
 /* GDK's gdk_window_focus() uses _NET_ACTIVE_WINDOW on modern desktops, which
  * goes through the window manager and is ignored for XEMBED-embedded plug
  * windows.  We call XSetInputFocus directly so the plug gets X11 keyboard
@@ -127,22 +143,6 @@ static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton *event,
     send_entry_focus_change(f, TRUE);
 
     return FALSE; /* let GtkEntry's default handler position the cursor */
-}
-
-/* Send a synthetic GDK_FOCUS_CHANGE event to the entry.  This triggers the
- * GTK entry's focus_in / focus_out handler, which starts/stops the cursor
- * blink timer and updates the focus-ring state.  We need it because the entry
- * shares the plug's GdkWindow (GtkEntry calls gtk_widget_set_window with its
- * parent's window), so GDK only dispatches GDK_FOCUS_CHANGE to the GtkPlug,
- * never to the entry directly. */
-static void send_entry_focus_change(MCSearchField *f, gboolean focus_in)
-{
-    GdkEvent *ev = gdk_event_new(GDK_FOCUS_CHANGE);
-    ev->focus_change.in     = focus_in;
-    ev->focus_change.window = gtk_widget_get_window(f->search_entry);
-    g_object_ref(ev->focus_change.window);
-    gtk_widget_send_focus_change(f->search_entry, ev);
-    gdk_event_free(ev);
 }
 
 /* Called when the plug's window gains X11 focus — either because the user
