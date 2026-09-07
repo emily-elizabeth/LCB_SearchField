@@ -172,14 +172,27 @@ static LRESULT CALLBACK ContainerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
-            /* Draw a simple magnifying-glass placeholder using text.
-             * A production build should use DrawIconEx with a proper icon
-             * resource or render via Direct2D. */
-            RECT rc = { 2, 0, kIconWidth, 0 };
-            GetClientRect(hwnd, &rc);
-            rc.right = kIconWidth;
-            SetBkMode(hdc, TRANSPARENT);
-            DrawTextW(hdc, L"\x2315", 1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            /* Draw a magnifying-glass icon using GDI primitives so the result
+             * is independent of font availability and glyph metrics. */
+            RECT rcClient;
+            GetClientRect(hwnd, &rcClient);
+            int cy  = (rcClient.bottom - rcClient.top) / 2;
+            int cx  = kIconWidth / 2;
+            int r   = 4; /* circle radius */
+
+            HPEN   hPen      = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_GRAYTEXT));
+            HPEN   hOldPen   = static_cast<HPEN>(SelectObject(hdc, hPen));
+            HBRUSH hOldBrush = static_cast<HBRUSH>(SelectObject(hdc, GetStockObject(NULL_BRUSH)));
+
+            Ellipse(hdc, cx - r, cy - r - 1, cx + r, cy + r - 1);
+            MoveToEx(hdc, cx + r - 2, cy + r - 2, nullptr);
+            LineTo(hdc,   cx + r + 3, cy + r + 3);
+
+            SelectObject(hdc, hOldBrush);
+            SelectObject(hdc, hOldPen);
+            DeleteObject(hPen);
+
             EndPaint(hwnd, &ps);
             break;
         }
@@ -269,7 +282,7 @@ bool MCSearchFieldCreate(void *p_parent_view, MCSearchFieldRef *r_field)
 
     /* Clear button */
     HWND clear_btn = CreateWindowExW(
-        0, L"BUTTON", L"×",
+        0, L"BUTTON", L"\u00D7",
         WS_CHILD | BS_FLAT | BS_TEXT,
         200 - kClearWidth, 0, kClearWidth, 24,
         container, reinterpret_cast<HMENU>(kClearBtnID), hInst, nullptr);
