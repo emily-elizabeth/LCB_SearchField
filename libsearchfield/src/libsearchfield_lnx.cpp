@@ -122,12 +122,24 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
     g_signal_connect(entry, "stop-search",    G_CALLBACK(on_stop_search),    f);
     g_signal_connect(entry, "icon-press",     G_CALLBACK(on_icon_press),     f);
 
-    /* Realize to obtain an XID but do NOT map/show the plug as a standalone
-     * window. XEMBED (via GtkSocket) controls its mapping once embedded.
-     * Calling gtk_widget_show_all here maps the plug independently, which
-     * conflicts with the socket's embedding and prevents it from appearing. */
-    gtk_widget_realize(plug);
-    gtk_widget_show(entry); /* mark the entry visible so it renders once embedded */
+    /* Show the plug (and all its children) before the engine's GtkSocket embeds
+     * it. gtk_widget_show sets XEMBED_MAPPED in the plug's _XEMBED_INFO X
+     * property. gtk_socket_add_window reads that property to decide whether to
+     * map the plug after reparenting it into the socket. Without XEMBED_MAPPED
+     * the socket embeds but never maps the plug, so it stays invisible.
+     *
+     * The plug is briefly visible as a standalone window here, but
+     * gtk_socket_add_id (called synchronously by the engine's doAttach) hides
+     * it, reparents it into the socket, then re-shows it there — so in
+     * practice no visual artifact is produced. */
+    gtk_widget_show_all(plug);
+
+    guint64 xid = (guint64)gtk_plug_get_id(GTK_PLUG(plug));
+    fprintf(stderr, "[LCSF] MCSearchFieldCreate: plug=%p realized=%d XID=%lu gdk_window=%p\n",
+            (void*)plug,
+            (int)gtk_widget_get_realized(plug),
+            (unsigned long)xid,
+            (void*)gtk_widget_get_window(plug));
 
     f->plug         = plug;
     f->search_entry = entry;
@@ -146,7 +158,11 @@ void *MCSearchFieldGetNativeLayer(MCSearchFieldRef p_field)
 {
     /* Return the XID of the GtkPlug — this is what the engine passes to
      * gtk_socket_add_id() when embedding via XEMBED. */
-    return reinterpret_cast<void *>(gtk_plug_get_id(GTK_PLUG(p_field->plug)));
+    guint64 xid = (guint64)gtk_plug_get_id(GTK_PLUG(p_field->plug));
+    fprintf(stderr, "[LCSF] MCSearchFieldGetNativeLayer: XID=%lu realized=%d\n",
+            (unsigned long)xid,
+            (int)gtk_widget_get_realized(p_field->plug));
+    return reinterpret_cast<void *>(xid);
 }
 
 void MCSearchFieldSetFrame(MCSearchFieldRef p_field,
