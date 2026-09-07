@@ -132,6 +132,26 @@ static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton *event,
     return FALSE; /* let GtkEntry's default handler position the cursor */
 }
 
+/* Mirrors on_entry_button_press: when the plug loses X11 focus (FocusOut on
+ * the plug's window), synthesise GDK_FOCUS_CHANGE(out) on the entry so
+ * gtk_entry_focus_out() runs — stopping the blink timer and clearing the
+ * cursor and focus-ring styling.  Without this the entry keeps its focused
+ * appearance even after another window takes focus. */
+static gboolean on_plug_focus_out(GtkWidget * /*widget*/, GdkEventFocus * /*event*/,
+                                  gpointer user_data)
+{
+    MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
+
+    GdkEvent *ev = gdk_event_new(GDK_FOCUS_CHANGE);
+    ev->focus_change.in     = FALSE;
+    ev->focus_change.window = gtk_widget_get_window(f->search_entry);
+    g_object_ref(ev->focus_change.window);
+    gtk_widget_send_focus_change(f->search_entry, ev);
+    gdk_event_free(ev);
+
+    return FALSE;
+}
+
 /* -------------------------------------------------------------------------
  * Public API
  * ---------------------------------------------------------------------- */
@@ -162,6 +182,7 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
     g_signal_connect(entry, "stop-search",       G_CALLBACK(on_stop_search),        f);
     g_signal_connect(entry, "icon-press",        G_CALLBACK(on_icon_press),         f);
     g_signal_connect(entry, "button-press-event",G_CALLBACK(on_entry_button_press), f);
+    g_signal_connect(plug,  "focus-out-event",   G_CALLBACK(on_plug_focus_out),     f);
 
     /* Show the plug (and all its children) before the engine's GtkSocket embeds
      * it. gtk_widget_show sets XEMBED_MAPPED in the plug's _XEMBED_INFO X
