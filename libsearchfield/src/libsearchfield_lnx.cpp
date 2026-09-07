@@ -120,36 +120,77 @@ static gboolean on_entry_button_press(GtkWidget *widget, GdkEventButton *event,
     /* 2. Give GTK-internal focus to the entry */
     gtk_widget_grab_focus(widget);
 
-    /* 3. Synthesise GDK_FOCUS_CHANGE on the entry so gtk_entry_focus_in()
-     *    runs, starts the cursor blink timer, and makes the cursor visible. */
-    GdkEvent *ev = gdk_event_new(GDK_FOCUS_CHANGE);
-    ev->focus_change.in     = TRUE;
-    ev->focus_change.window = gtk_widget_get_window(widget);
-    g_object_ref(ev->focus_change.window);
-    gtk_widget_send_focus_change(widget, ev);
-    gdk_event_free(ev);
+    /* 3. Synthesise GDK_FOCUS_CHANGE(in) on the entry immediately so the cursor
+     *    appears without waiting for the async FocusIn X event on the plug.
+     *    on_plug_focus_in will also fire when FocusIn arrives; the second call
+     *    to gtk_entry_focus_in just resets the blink timer, which is harmless. */
+    send_entry_focus_change(f, TRUE);
 
     return FALSE; /* let GtkEntry's default handler position the cursor */
 }
 
-/* Mirrors on_entry_button_press: when the plug loses X11 focus (FocusOut on
- * the plug's window), synthesise GDK_FOCUS_CHANGE(out) on the entry so
- * gtk_entry_focus_out() runs — stopping the blink timer and clearing the
- * cursor and focus-ring styling.  Without this the entry keeps its focused
- * appearance even after another window takes focus. */
-static gboolean on_plug_focus_out(GtkWidget * /*widget*/, GdkEventFocus * /*event*/,
-                                  gpointer user_data)
+/* Send a synthetic GDK_FOCUS_CHANGE event to the entry.  This triggers the
+ * GTK entry's focus_in / focus_out handler, which starts/stops the cursor
+ * blink timer and updates the focus-ring state.  We need it because the entry
+ * shares the plug's GdkWindow (GtkEntry calls gtk_widget_set_window with its
+ * parent's window), so GDK only dispatches GDK_FOCUS_CHANGE to the GtkPlug,
+ * never to the entry directly. */
+static void send_entry_focus_change(MCSearchField *f, gboolean focus_in)
 {
-    MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
-
     GdkEvent *ev = gdk_event_new(GDK_FOCUS_CHANGE);
-    ev->focus_change.in     = FALSE;
+    ev->focus_change.in     = focus_in;
     ev->focus_change.window = gtk_widget_get_window(f->search_entry);
     g_object_ref(ev->focus_change.window);
     gtk_widget_send_focus_change(f->search_entry, ev);
     gdk_event_free(ev);
+}
 
+/* Called when the plug's window gains X11 focus — either because the user
+ * clicked inside the entry (XSetInputFocus called from on_entry_button_press)
+ * or because the XEMBED host (GtkSocket) forwarded tab focus to the plug.
+ * Give GTK focus to the entry and synthesise focus-in so the cursor appears. */
+static gboolean on_plug_focus_in(GtkWidget * /*widget*/, GdkEventFocus * /*event*/,
+                                 gpointer user_data)
+{
+    MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
+    gtk_widget_grab_focus(f->search_entry);
+    send_entry_focus_change(f, TRUE);
     return FALSE;
+}
+
+/* Called when the plug's window loses X11 focus.  Synthesise focus-out on the
+ * entry so gtk_entry_focus_out() stops the blink timer and clears the cursor
+ * and focus-ring styling. */
+static gboolean on_plug_focus_out(GtkWidget * /*widget*/, GdkEventFocus * /*event*/,
+                                  gpointer user_data)
+{
+    MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
+    send_entry_focus_change(f, FALSE);
+    return FALSE;
+}
+
+/* When Tab / Shift-Tab is pressed, move X11 keyboard focus back to the
+ * GtkSocket's window so the XEMBED host can advance its own tab order.
+ * Without this the plug retains X11 focus indefinitely after a Tab press:
+ * XEMBED_FOCUS_NEXT is sent to the socket but FocusOut never arrives on the
+ * plug, so on_plug_focus_out never runs and the entry keeps its focused
+ * appearance. */
+static gboolean on_entry_key_press(GtkWidget * /*widget*/, GdkEventKey *event,
+                                   gpointer user_data)
+{
+    if (event->keyval != GDK_KEY_Tab && event->keyval != GDK_KEY_ISO_Left_Tab)
+        return FALSE;
+
+    MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
+    GdkWindow *socket_win = gtk_plug_get_socket_window(GTK_PLUG(f->plug));
+    if (socket_win != NULL)
+    {
+        GdkDisplay *display = gtk_widget_get_display(f->plug);
+        Display    *xdpy    = gdk_x11_display_get_xdisplay(display);
+        Window      xwin    = gdk_x11_window_get_xid(socket_win);
+        XSetInputFocus(xdpy, xwin, RevertToParent, event->time);
+    }
+    return FALSE; /* let normal Tab handling proceed (sends XEMBED_FOCUS_NEXT) */
 }
 
 /* -------------------------------------------------------------------------
@@ -182,6 +223,8 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
     g_signal_connect(entry, "stop-search",       G_CALLBACK(on_stop_search),        f);
     g_signal_connect(entry, "icon-press",        G_CALLBACK(on_icon_press),         f);
     g_signal_connect(entry, "button-press-event",G_CALLBACK(on_entry_button_press), f);
+    g_signal_connect(entry, "key-press-event",   G_CALLBACK(on_entry_key_press),    f);
+    g_signal_connect(plug,  "focus-in-event",    G_CALLBACK(on_plug_focus_in),      f);
     g_signal_connect(plug,  "focus-out-event",   G_CALLBACK(on_plug_focus_out),     f);
 
     /* Show the plug (and all its children) before the engine's GtkSocket embeds
