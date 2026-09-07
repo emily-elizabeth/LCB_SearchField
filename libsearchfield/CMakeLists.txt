@@ -55,7 +55,7 @@ if(APPLE)
 elseif(WIN32)
     set(CODE_SUBDIR "x86_64-win")
 elseif(UNIX)
-    set(CODE_SUBDIR "x86_64-lnx")
+    set(CODE_SUBDIR "x86_64-linux")
 endif()
 
 set(WIDGET_CODE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../widget/code/${CODE_SUBDIR}")
