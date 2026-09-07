@@ -27,7 +27,8 @@ along with LCB_SearchField. If not, see <http://www.gnu.org/licenses/>.
 
 struct MCSearchField
 {
-    GtkWidget *search_entry;   /* GtkSearchEntry — used directly as the native layer */
+    GtkWidget *plug;           /* GtkPlug — top-level XEMBED window; its XID is the native layer */
+    GtkWidget *search_entry;   /* GtkSearchEntry — child of the plug */
 
     std::string text;
     std::string placeholder;
@@ -100,31 +101,30 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
     f->enabled     = true;
     f->show_cancel = true;
 
-    /* Use GtkSearchEntry directly as the native layer. GtkSearchBar is a
-     * revealer-based slide-in container that does not embed well as a native
-     * layer; GtkSearchEntry is a self-contained, always-visible search field
-     * with a built-in search icon and optional clear icon. */
-    GtkWidget *search_entry = gtk_search_entry_new();
+    /* The HyperXTalk Linux engine embeds native layers via X11 XEMBED
+     * (GtkSocket + GtkPlug). It expects the native layer value to be an XID.
+     * We create a GtkPlug (socket_id=0 → standalone until the engine embeds
+     * it), put the GtkSearchEntry inside it, and return the plug's XID from
+     * MCSearchFieldGetNativeLayer. The engine's GtkSocket then calls
+     * gtk_socket_add_id(socket, xid) to embed it. */
+    GtkWidget *plug  = gtk_plug_new(0);
+    GtkWidget *entry = gtk_search_entry_new();
 
-    /* Show the secondary (clear) icon by default. */
-    gtk_entry_set_icon_from_icon_name(GTK_ENTRY(search_entry),
+    gtk_entry_set_icon_from_icon_name(GTK_ENTRY(entry),
                                       GTK_ENTRY_ICON_SECONDARY,
                                       "edit-clear-symbolic");
 
-    g_signal_connect(search_entry, "search-changed",
-                     G_CALLBACK(on_search_changed), f);
-    g_signal_connect(search_entry, "activate",
-                     G_CALLBACK(on_activate), f);
-    g_signal_connect(search_entry, "stop-search",
-                     G_CALLBACK(on_stop_search), f);
-    g_signal_connect(search_entry, "icon-press",
-                     G_CALLBACK(on_icon_press), f);
+    gtk_container_add(GTK_CONTAINER(plug), entry);
 
-    /* Do NOT parent the widget here — the engine embeds it when the LCB widget
-     * calls "set my native layer to MCSearchFieldGetNativeLayer(...)". */
-    gtk_widget_show(search_entry);
+    g_signal_connect(entry, "search-changed", G_CALLBACK(on_search_changed), f);
+    g_signal_connect(entry, "activate",       G_CALLBACK(on_activate),       f);
+    g_signal_connect(entry, "stop-search",    G_CALLBACK(on_stop_search),    f);
+    g_signal_connect(entry, "icon-press",     G_CALLBACK(on_icon_press),     f);
 
-    f->search_entry = search_entry;
+    gtk_widget_show_all(plug);
+
+    f->plug         = plug;
+    f->search_entry = entry;
     *r_field        = f;
     return true;
 }
@@ -132,22 +132,23 @@ bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
 void MCSearchFieldDestroy(MCSearchFieldRef p_field)
 {
     if (!p_field) return;
-    gtk_widget_destroy(p_field->search_entry);
+    gtk_widget_destroy(p_field->plug);
     delete p_field;
 }
 
 void *MCSearchFieldGetNativeLayer(MCSearchFieldRef p_field)
 {
-    return reinterpret_cast<void *>(p_field->search_entry);
+    /* Return the XID of the GtkPlug — this is what the engine passes to
+     * gtk_socket_add_id() when embedding via XEMBED. */
+    return reinterpret_cast<void *>(gtk_plug_get_id(GTK_PLUG(p_field->plug)));
 }
 
 void MCSearchFieldSetFrame(MCSearchFieldRef p_field,
-                           int32_t p_x, int32_t p_y,
+                           int32_t /*p_x*/, int32_t /*p_y*/,
                            int32_t p_width, int32_t p_height)
 {
-    GtkWidget *parent = gtk_widget_get_parent(p_field->search_entry);
-    if (parent && GTK_IS_FIXED(parent))
-        gtk_fixed_move(GTK_FIXED(parent), p_field->search_entry, p_x, p_y);
+    /* Positioning is managed by the engine's GtkSocket. We only set the
+     * requested size so GTK knows how large to render the entry. */
     gtk_widget_set_size_request(p_field->search_entry, p_width, p_height);
 }
 
@@ -185,7 +186,7 @@ bool MCSearchFieldGetEnabled(MCSearchFieldRef p_field)
 void MCSearchFieldSetEnabled(MCSearchFieldRef p_field, bool p_enabled)
 {
     p_field->enabled = p_enabled;
-    gtk_widget_set_sensitive(p_field->search_entry, p_enabled);
+    gtk_widget_set_sensitive(p_field->plug, p_enabled);
 }
 
 bool MCSearchFieldGetShowCancelButton(MCSearchFieldRef p_field)
