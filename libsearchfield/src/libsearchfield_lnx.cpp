@@ -27,8 +27,7 @@ along with LCB_SearchField. If not, see <http://www.gnu.org/licenses/>.
 
 struct MCSearchField
 {
-    GtkWidget *search_entry;   /* GtkSearchEntry */
-    GtkWidget *search_bar;     /* GtkSearchBar container */
+    GtkWidget *search_entry;   /* GtkSearchEntry — used directly as the native layer */
 
     std::string text;
     std::string placeholder;
@@ -79,24 +78,38 @@ static void on_stop_search(GtkSearchEntry *entry, gpointer user_data)
         f->cancelled_cb(f->cancelled_ctx, f);
 }
 
+static void on_icon_press(GtkEntry *entry, GtkEntryIconPosition pos,
+                          GdkEvent * /*event*/, gpointer user_data)
+{
+    if (pos != GTK_ENTRY_ICON_SECONDARY) return;
+    MCSearchField *f = reinterpret_cast<MCSearchField *>(user_data);
+    gtk_entry_set_text(entry, "");
+    f->text.clear();
+
+    if (f->cancelled_cb)
+        f->cancelled_cb(f->cancelled_ctx, f);
+}
+
 /* -------------------------------------------------------------------------
  * Public API
  * ---------------------------------------------------------------------- */
 
-bool MCSearchFieldCreate(void *p_parent_view, MCSearchFieldRef *r_field)
+bool MCSearchFieldCreate(void * /*p_parent_view*/, MCSearchFieldRef *r_field)
 {
     MCSearchField *f = new MCSearchField{};
-    f->enabled      = true;
-    f->show_cancel  = true;
+    f->enabled     = true;
+    f->show_cancel = true;
 
+    /* Use GtkSearchEntry directly as the native layer. GtkSearchBar is a
+     * revealer-based slide-in container that does not embed well as a native
+     * layer; GtkSearchEntry is a self-contained, always-visible search field
+     * with a built-in search icon and optional clear icon. */
     GtkWidget *search_entry = gtk_search_entry_new();
-    GtkWidget *search_bar   = gtk_search_bar_new();
 
-    gtk_search_bar_connect_entry(GTK_SEARCH_BAR(search_bar),
-                                 GTK_ENTRY(search_entry));
-    gtk_container_add(GTK_CONTAINER(search_bar), search_entry);
-    gtk_search_bar_set_show_close_button(GTK_SEARCH_BAR(search_bar), TRUE);
-    gtk_search_bar_set_search_mode(GTK_SEARCH_BAR(search_bar), TRUE);
+    /* Show the secondary (clear) icon by default. */
+    gtk_entry_set_icon_from_icon_name(GTK_ENTRY(search_entry),
+                                      GTK_ENTRY_ICON_SECONDARY,
+                                      "edit-clear-symbolic");
 
     g_signal_connect(search_entry, "search-changed",
                      G_CALLBACK(on_search_changed), f);
@@ -104,15 +117,14 @@ bool MCSearchFieldCreate(void *p_parent_view, MCSearchFieldRef *r_field)
                      G_CALLBACK(on_activate), f);
     g_signal_connect(search_entry, "stop-search",
                      G_CALLBACK(on_stop_search), f);
+    g_signal_connect(search_entry, "icon-press",
+                     G_CALLBACK(on_icon_press), f);
 
-    /* Do NOT add to p_parent_view here. The engine embeds the widget when the
-     * LCB widget calls "set my native layer to MCSearchFieldGetNativeLayer(...)".
-     * Calling gtk_container_add on the parent pointer at this stage crashes
-     * because it is not yet a valid GtkContainer in the widget lifecycle. */
-    gtk_widget_show_all(search_bar);
+    /* Do NOT parent the widget here — the engine embeds it when the LCB widget
+     * calls "set my native layer to MCSearchFieldGetNativeLayer(...)". */
+    gtk_widget_show(search_entry);
 
     f->search_entry = search_entry;
-    f->search_bar   = search_bar;
     *r_field        = f;
     return true;
 }
@@ -120,26 +132,23 @@ bool MCSearchFieldCreate(void *p_parent_view, MCSearchFieldRef *r_field)
 void MCSearchFieldDestroy(MCSearchFieldRef p_field)
 {
     if (!p_field) return;
-    gtk_widget_destroy(p_field->search_bar);
+    gtk_widget_destroy(p_field->search_entry);
     delete p_field;
 }
 
 void *MCSearchFieldGetNativeLayer(MCSearchFieldRef p_field)
 {
-    return reinterpret_cast<void *>(p_field->search_bar);
+    return reinterpret_cast<void *>(p_field->search_entry);
 }
 
 void MCSearchFieldSetFrame(MCSearchFieldRef p_field,
                            int32_t p_x, int32_t p_y,
                            int32_t p_width, int32_t p_height)
 {
-    /* GTK layout is typically managed by a container; for fixed containers: */
-    GtkWidget *parent = gtk_widget_get_parent(p_field->search_bar);
+    GtkWidget *parent = gtk_widget_get_parent(p_field->search_entry);
     if (parent && GTK_IS_FIXED(parent))
-    {
-        gtk_fixed_move(GTK_FIXED(parent), p_field->search_bar, p_x, p_y);
-    }
-    gtk_widget_set_size_request(p_field->search_bar, p_width, p_height);
+        gtk_fixed_move(GTK_FIXED(parent), p_field->search_entry, p_x, p_y);
+    gtk_widget_set_size_request(p_field->search_entry, p_width, p_height);
 }
 
 const char *MCSearchFieldGetText(MCSearchFieldRef p_field)
@@ -176,7 +185,7 @@ bool MCSearchFieldGetEnabled(MCSearchFieldRef p_field)
 void MCSearchFieldSetEnabled(MCSearchFieldRef p_field, bool p_enabled)
 {
     p_field->enabled = p_enabled;
-    gtk_widget_set_sensitive(p_field->search_bar, p_enabled);
+    gtk_widget_set_sensitive(p_field->search_entry, p_enabled);
 }
 
 bool MCSearchFieldGetShowCancelButton(MCSearchFieldRef p_field)
@@ -187,8 +196,9 @@ bool MCSearchFieldGetShowCancelButton(MCSearchFieldRef p_field)
 void MCSearchFieldSetShowCancelButton(MCSearchFieldRef p_field, bool p_show)
 {
     p_field->show_cancel = p_show;
-    gtk_search_bar_set_show_close_button(GTK_SEARCH_BAR(p_field->search_bar),
-                                         p_show ? TRUE : FALSE);
+    gtk_entry_set_icon_from_icon_name(GTK_ENTRY(p_field->search_entry),
+                                      GTK_ENTRY_ICON_SECONDARY,
+                                      p_show ? "edit-clear-symbolic" : nullptr);
 }
 
 void MCSearchFieldSetTextChangedCallback(MCSearchFieldRef p_field,
